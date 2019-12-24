@@ -6,7 +6,7 @@ MAINTAINER Overhang.io <contact@overhang.io>
 # Install system requirements
 RUN apt update && \
     # Global requirements
-    apt install -y language-pack-en git python-virtualenv build-essential software-properties-common curl git-core libxml2-dev libxslt1-dev python-virtualenv libmysqlclient-dev python-apt python-dev libxmlsec1-dev libfreetype6-dev swig gcc g++ \
+    apt install -y language-pack-en git python-virtualenv build-essential software-properties-common curl git-core libmysqlclient-dev libxml2-dev libxslt1-dev python3 python3-virtualenv python3-apt python3-dev libxmlsec1-dev libfreetype6-dev swig gcc g++ \
     # openedx requirements
     gettext gfortran graphviz graphviz-dev libffi-dev libfreetype6-dev libgeos-dev libjpeg8-dev liblapack-dev libpng12-dev libsqlite3-dev libxml2-dev libxmlsec1-dev libxslt1-dev lynx nodejs npm ntp pkg-config \
     && rm -rf /var/lib/apt/lists/*
@@ -21,16 +21,12 @@ RUN curl -L -o /tmp/dockerize.tar.gz https://github.com/jwilder/dockerize/releas
 # Because we are pulling from a branch, and not a tag, you should manually modify the
 # date hash below to force clearing the docker cache.
 ARG EDX_PLATFORM_REPOSITORY=https://github.com/edx/edx-platform.git
-ARG EDX_PLATFORM_VERSION=open-release/ironwood.master
+ARG EDX_PLATFORM_VERSION=open-release/juniper.alpha1
 ARG EDX_PLATFORM_VERSION_DATE=20200227
 RUN mkdir -p /openedx/edx-platform && \
     echo "Puling $EDX_PLATFORM_VERSION tag from $EDX_PLATFORM_REPOSITORY ($EDX_PLATFORM_VERSION_DATE)" && \
     git clone $EDX_PLATFORM_REPOSITORY --branch $EDX_PLATFORM_VERSION --depth 1 /openedx/edx-platform
 WORKDIR /openedx/edx-platform
-
-# Apply patches
-# Allow SigV4 authentication for video uploads to S3 https://github.com/edx/edx-platform/pull/22080
-RUN curl https://github.com/overhangio/edx-platform/commit/0d4f6cc3433013960b28e963c4094ef2a2a92f04.patch | git apply -
 
 # Download extra locales to /openedx/locale
 RUN cd /tmp \
@@ -39,22 +35,18 @@ RUN cd /tmp \
     && mv openedx-i18n-ironwood/edx-platform/locale/ /openedx/locale/ \
     && rm -rf openedx-i18n*
 
+# TODO move this higher up
+ENV LC_ALL en_US.UTF-8
+
 # Install python requirements in a virtualenv
-RUN virtualenv /openedx/venv
+RUN python3 -m virtualenv --python=python3.5 /openedx/venv
 ENV PATH /openedx/venv/bin:${PATH}
 ENV VIRTUAL_ENV /openedx/venv/
-RUN pip install setuptools==39.0.1 pip==9.0.3
+RUN pip install setuptools==39.0.1 pip==19.3.1
 RUN pip install -r requirements/edx/base.txt
 
-# Install patched version of ora2
-RUN pip uninstall -y ora2 && \
-    pip install git+https://github.com/overhangio/edx-ora2.git@2.2.0-patched#egg=ora2==2.2.0
-
-# Install patched version of edx-oauth2-provider
-RUN pip install git+https://github.com/overhangio/edx-oauth2-provider.git@1.2.3#egg=edx-oauth2-provider==1.2.3
-
 # Install a recent version of nodejs
-RUN nodeenv /openedx/nodeenv --node=8.9.3 --prebuilt
+RUN nodeenv /openedx/nodeenv --node=12.13.0 --prebuilt
 ENV PATH /openedx/nodeenv/bin:${PATH}
 
 # Install nodejs requirements
@@ -68,10 +60,13 @@ RUN cd /openedx/requirements/ \
   && touch ./private.txt \
   && pip install -r ./private.txt
 
-# Create folder that will store *.env.json and *.auth.json files, as well as
+# Create folder that will store lms/cms.env.json files, as well as
 # the tutor-specific settings files.
 RUN mkdir -p /openedx/config ./lms/envs/tutor ./cms/envs/tutor
-ENV CONFIG_ROOT /openedx/config
+COPY revisions.yml /openedx/config/
+ENV LMS_CFG /openedx/config/lms.env.json
+ENV STUDIO_CFG /openedx/config/cms.env.json
+ENV REVISION_CFG /openedx/config/revisions.yml
 COPY settings/lms/*.py ./lms/envs/tutor/
 COPY settings/cms/*.py ./cms/envs/tutor/
 

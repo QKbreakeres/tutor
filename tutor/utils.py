@@ -1,11 +1,14 @@
+import base64
 import json
 import os
 import random
 import shutil
 import string
+import struct
 import subprocess
 
 import click
+from Crypto.PublicKey import RSA
 
 from . import exceptions
 from . import fmt
@@ -54,6 +57,41 @@ def reverse_host(domain):
     Ex: "www.google.com" -> "com.google.www"
     """
     return ".".join(domain.split(".")[::-1])
+
+
+def rsa_private_key(bits=2048):
+    """
+    Export an RSA private key in PEM format.
+    """
+    key = RSA.generate(bits)
+    return key.export_key().decode()
+
+
+def rsa_import_key(key):
+    """
+    Import PEM-formatted RSA key and return the corresponding object.
+    """
+    return RSA.import_key(key.encode())
+
+
+def long_to_base64(n):
+    """
+    Borrowed from jwkest.__init__
+    """
+
+    def long2intarr(long_int):
+        _bytes = []
+        while long_int:
+            long_int, r = divmod(long_int, 256)
+            _bytes.insert(0, r)
+        return _bytes
+
+    bys = long2intarr(n)
+    data = struct.pack("%sB" % len(bys), *bys)
+    if not data:
+        data = "\x00"
+    s = base64.urlsafe_b64encode(data).rstrip(b"=")
+    return s.decode("ascii")
 
 
 def walk_files(path):
